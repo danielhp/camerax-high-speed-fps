@@ -3,7 +3,6 @@ package com.sample.cameraxhighspeedfps.camera
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
-import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
@@ -28,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 data class HighSpeedConfig(
     val quality: Quality,
@@ -59,18 +59,18 @@ class HighSpeedCameraManager(private val context: Context) {
     fun discoverCapabilities(cameraInfo: CameraInfo) {
         val capabilities = Recorder.getHighSpeedVideoCapabilities(cameraInfo) ?: return
         val supportedQualities = capabilities.getSupportedQualities(DynamicRange.SDR)
-        
+
         val foundConfigs = mutableListOf<HighSpeedConfig>()
-        
+
         for (quality in supportedQualities) {
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(quality))
                 .build()
             val vc = VideoCapture.withOutput(recorder)
-            
+
             val builder = HighSpeedVideoSessionConfig.Builder(vc)
             val highSpeedSessionConfig = builder.build()
-            
+
             val fpsRanges = cameraInfo.getSupportedFrameRateRanges(highSpeedSessionConfig)
             for (range in fpsRanges) {
                 if (range.upper >= 120) {
@@ -78,7 +78,7 @@ class HighSpeedCameraManager(private val context: Context) {
                 }
             }
         }
-        
+
         _configs.value = foundConfigs.sortedByDescending { it.fpsRange.upper }.distinct()
     }
 
@@ -91,13 +91,13 @@ class HighSpeedCameraManager(private val context: Context) {
         slowMotion: Boolean
     ) {
         Log.d("HighSpeedCameraManager", "Binding camera: $config, slowMotion=$slowMotion")
-        
+
         activeRecording?.stop()
         activeRecording = null
         _isRecording.value = false
 
         cameraProvider.unbindAll()
-        delay(100)
+        delay(100.milliseconds)
 
         val recorder = Recorder.Builder()
             .setQualitySelector(QualitySelector.from(config.quality))
@@ -106,13 +106,13 @@ class HighSpeedCameraManager(private val context: Context) {
         videoCapture = vc
 
         val preview = Preview.Builder().build()
-        preview.setSurfaceProvider(previewView.surfaceProvider)
+        preview.surfaceProvider = previewView.surfaceProvider
 
         val builder = HighSpeedVideoSessionConfig.Builder(vc)
             .setPreview(preview)
             .setFrameRateRange(config.fpsRange)
             .setSlowMotionEnabled(slowMotion)
-        
+
         val highSpeedSessionConfig = builder.build()
 
         try {
@@ -138,15 +138,13 @@ class HighSpeedCameraManager(private val context: Context) {
         }
 
         val vc = videoCapture ?: return
-        
+
         val name = "HighSpeed-" + SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
             .format(System.currentTimeMillis())
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/CameraXHighSpeed")
-            }
+            put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/CameraXHighSpeed")
         }
 
         val mediaStoreOutputOptions = MediaStoreOutputOptions
